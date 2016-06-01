@@ -1,222 +1,126 @@
-do
-
--- Returns the key (index) in the config.enabled_plugins table
-local function plugin_enabled( name )
-  for k,v in pairs(_config.enabled_plugins) do
-    if name == v then
-      return k
-    end
-  end
-  -- If not found
-  return false
-end
-
--- Returns true if file exists in plugins folder
-local function plugin_exists( name )
-  for k,v in pairs(plugins_names()) do
-    if name..'.lua' == v then
-      return true
-    end
-  end
-  return false
-end
-
-local function list_all_plugins(only_enabled)
-  local text = ''
-  local nsum = 0
-  for k, v in pairs( plugins_names( )) do
-    --  ✔ enabled, ❌ disabled
-    local status = '❌'
-    nsum = nsum+1
-    nact = 0
-    -- Check if is enabled
-    for k2, v2 in pairs(_config.enabled_plugins) do
-      if v == v2..'.lua' then
-        status = '✔'
-      end
-      nact = nact+1
-    end
-    if not only_enabled or status == '✔' then
-      -- get the name
-      v = string.match (v, "(.*)%.lua")
-      text = text..nsum..'. '..v..'  '..status..'\n'
-    end
-  end
-  local text = text..'\n '..nsum..' پلاگین نصب\n'..nact..' پلاگین فعال و '..nsum-nact..'غیرفعال است'
-  return text
-end
-
-local function list_plugins(only_enabled)
-  local text = ''
-  local nsum = 0
-  for k, v in pairs( plugins_names( )) do
-    --  ✔ enabled, ❌ disabled
-    local status = '❌'
-    nsum = nsum+1
-    nact = 0
-    -- Check if is enabled
-    for k2, v2 in pairs(_config.enabled_plugins) do
-      if v == v2..'.lua' then
-        status = '✔'
-      end
-      nact = nact+1
-    end
-    if not only_enabled or status == '✔' then
-      -- get the name
-      v = string.match (v, "(.*)%.lua")
-      text = text..v..'  '..status..'\n'
-    end
-  end
-  local text = text..'\n'..nact..' پلاگین فعال از '..nsum..'پلاگین موجود در سرور.'
-  return text
-end
-
-local function reload_plugins( )
-  plugins = {}
-  load_plugins()
-  return list_plugins(true)
-end
-
-
-local function enable_plugin( plugin_name )
-  print('checking if '..plugin_name..' exists')
-  -- Check if plugin is enabled
-  if plugin_enabled(plugin_name) then
-    return 'پلاگین '..plugin_name..' فعال شد'
-  end
-  -- Checks if plugin exists
-  if plugin_exists(plugin_name) then
-    -- Add to the config table
-    table.insert(_config.enabled_plugins, plugin_name)
-    print(plugin_name..' added to _config table')
-    save_config()
-    -- Reload the plugins
-    return reload_plugins( )
-  else
-    return 'پلاگین '..plugin_name..'یافت نشد'
-  end
-end
-
-local function disable_plugin( name, chat )
-  -- Check if plugins exists
-  if not plugin_exists(name) then
-    return 'پلاگین '..name..'یافت نشد'
-  end
-  local k = plugin_enabled(name)
-  -- Check if plugin is enabled
-  if not k then
-    return 'پلاگین '..name..' غیرفعال است'
-  end
-  -- Disable and reload
-  table.remove(_config.enabled_plugins, k)
-  save_config( )
-  return reload_plugins(true)
-end
-
-local function disable_plugin_on_chat(receiver, plugin)
-  if not plugin_exists(plugin) then
-    return "پلاگین یافت نشد"
-  end
-
-  if not _config.disabled_plugin_on_chat then
-    _config.disabled_plugin_on_chat = {}
-  end
-
-  if not _config.disabled_plugin_on_chat[receiver] then
-    _config.disabled_plugin_on_chat[receiver] = {}
-  end
-
-  _config.disabled_plugin_on_chat[receiver][plugin] = true
-
-  save_config()
-  return 'پلاگین '..plugin..' در این گروه غیرفعال شد'
-end
-
-local function reenable_plugin_on_chat(receiver, plugin)
-  if not _config.disabled_plugin_on_chat then
-    return 'این پلاگین غیرفعال است'
-  end
-
-  if not _config.disabled_plugin_on_chat[receiver] then
-    return 'There aren\'t any disabled plugins for this chat'
-  end
-
-  if not _config.disabled_plugin_on_chat[receiver][plugin] then
-    return 'Tاین پلاگین غیر فعال نیست'
-  end
-
-  _config.disabled_plugin_on_chat[receiver][plugin] = false
-  save_config()
-  return 'پلاگین '..plugin..' دوباره فعال شد'
-end
-
 local function run(msg, matches)
-  -- Show the available plugins
-  if matches[1] == 'plug' and is_sudo(msg) then --after changed to moderator mode, set only sudo
-    return list_all_plugins()
-  end
-
-  -- Re-enable a plugin for this chat
-  if matches[1] == '+' and matches[3] == 'chat' and is_owner(msg) then
-    local receiver = get_receiver(msg)
-    local plugin = matches[2]
-    print("enable "..plugin..' on this chat')
-    return reenable_plugin_on_chat(receiver, plugin)
-  end
-
-  -- Enable a plugin
-  if matches[1] == '+' and is_sudo(msg) then --after changed to moderator mode, set only sudo
-    local plugin_name = matches[2]
-    print("enable: "..matches[2])
-    return enable_plugin(plugin_name)
-  end
-
-  -- Disable a plugin on a chat
-  if matches[1] == '-' and matches[3] == 'chat' and is_owner(msg) then
-    local plugin = matches[2]
-    local receiver = get_receiver(msg)
-    print("disable "..plugin..' on this chat')
-    return disable_plugin_on_chat(receiver, plugin)
-  end
-
-  -- Disable a plugin
-  if matches[1] == '-' and is_sudo(msg) then --after changed to moderator mode, set only sudo
-    if matches[2] == 'plugins' then
-    	return 'این پلاگین نمیتواند غیر فعال شود'
+local data = load_data(_config.moderation.data)
+    if matches[1] == 'chat_add_user' then
+      if not msg.service then
+        return 
+      end
+      local receiver = get_receiver(msg)
+  if is_banned(msg.action.user.id, msg.to.id) then
+          return
     end
-    print("disable: "..matches[2])
-    return disable_plugin(matches[2])
+    if is_gbanned(msg.action.user.id) then
+            return
+        end
+local nicebekhodam = ''
+  if data[tostring(msg.to.id)]['welcome'] == '✅' then
+  if data[tostring(msg.to.id)]['welcome_msg'] then
+  local message = data[tostring(msg.to.id)]['welcome_msg']
+  local Usernames = ''
+     local hash = 'rank:'..msg.to.id..':variables'
+    local value = redis:hget(hash, msg.action.user.id)
+     if not value then
+        if msg.action.user.first_name then
+                   Usernames = msg.action.user.first_name
+        else
+                   Usernames = msg.action.user.last_name
+      end
+      else
+       Usernames = value
+     end
+if string.match(message, '{name}') then
+        message = string.gsub(message, '{name}', Usernames)
+end
+
+  if string.match(message, '{group}') then
+        local grouppp = ''
+        if string.match(msg.to.print_name, '_') then
+        grouppp = string.gsub(msg.to.print_name, '_', ' ')
+        else grouppp = msg.to.print_name end
+    message = string.gsub(message, '{group}',  grouppp)
   end
 
-  -- Reload all the plugins!
-  if matches[1] == '*' and is_sudo(msg) then --after changed to moderator mode, set only sudo
-    return reload_plugins(true)
+
+if string.match(message, '{rules}') then
+  local data_catt = 'rules'
+local rulessss = ''
+  if not data[tostring(msg.to.id)][data_catt] then
+   rulessss = 'گروه قانونی ندارد!'
+  else
+  rulessss = data[tostring(msg.to.id)][data_catt]
   end
+  message = string.gsub(message, '{rules}',  rulessss)
 end
+
+  return message
+  else
+     return 'سلام '..(msg.action.user.first_name or msg.action.user.last_name)..'\nبه گروه '.. string.gsub(msg.to.print_name, '_', ' ')..' خوش اومدی'
+   end
+    end
+
+    end
+  
+      if matches[1] == 'chat_add_user_link' then
+      if not msg.service then
+        return 
+      end
+      local receiver = get_receiver(msg)
+  if is_banned(msg.from.id, msg.to.id) then
+          return
+    end
+    if is_gbanned(msg.from.id) then
+            return
+        end
+  if data[tostring(msg.to.id)]['welcome'] == '✅' then
+  if data[tostring(msg.to.id)]['welcome_msg'] then
+  local message = data[tostring(msg.to.id)]['welcome_msg']
+  local Usernames = ''
+     local hash = 'rank:'..msg.to.id..':variables'
+    local value = redis:hget(hash, msg.from.id)
+     if not value then
+        if msg.action.user.first_name then
+                   Usernames = msg.action.user.first_name
+        else
+                   Usernames = msg.action.user.last_name
+      end
+      else
+       Usernames = value
+     end
+  if string.match(message, '{name}') then
+    message = string.gsub(message, '{name}', Usernames)
+  end
+
+  if string.match(message, '{group}') then
+        local grouppp = ''
+        if string.match(msg.to.print_name, '_') then
+        grouppp = string.gsub(msg.to.print_name, '_', ' ')
+        else grouppp = msg.to.print_name end
+    message = string.gsub(message, '{group}',  grouppp)
+  end
+  if string.match(message, '{rules}') then
+    local data_catt = 'rules'
+  local rulessss = ''
+    if not data[tostring(msg.to.id)][data_catt] then
+     rulessss = 'گروه قانونی ندارد'
+    else
+    rulessss = data[tostring(msg.to.id)][data_catt]
+end
+    message = string.gsub(message, '{rules}',  rulessss)
+  end
+  return message
+  else
+     return 'سلام '..(msg.from.first_name or msg.from.last_name)..'\nبه گروه '.. string.gsub(msg.to.print_name, '_', ' ')..' خوش آمدی'
+   end
+    end
+
+    end
+end
+
 
 return {
-  description = "Plugin to manage other plugins. Enable, disable or reload.",
-  usage = {
-      moderator = {
-          "plug - [plugin] [chat] : غیرفعال کردن یک پلاگین خاص در یک گروه",
-          "plug + [plugin] [chat] : فعال کردن یک پلاگین خاص در گروه",
-          },
-      sudo = {
-          "plug :نمایش همه پلاگین ها",
-          "plug + [plugin] : فعالسازی پلاگین مورد نظر.",
-          "plug - [plugin] : غیرفعالسازی پلاگین موردنظر",
-          "plug * : فعال شدن همه پلاگین ها" },
-          },
   patterns = {
-    "^plug$",
-    "^plug (+) ([%w_%.%-]+)$",
-    "^plug (-) ([%w_%.%-]+)$",
-    "^plug (+) ([%w_%.%-]+) (chat)",
-    "^plug (-) ([%w_%.%-]+) (chat)",
-    "^plug (*)$" },
-  run = run,
-  moderated = true, -- set to moderator mode
-  --privileged = true
-}
+    "^!!tgservice (chat_add_user)$",
+  "^!!tgservice (chat_add_user_link)$",
 
-end
+  },
+  run = run
+}
